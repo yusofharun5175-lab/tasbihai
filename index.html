@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasbih AI Offline (Sifu Version)</title>
+    
+    <!-- Library AI Stabil -->
+    <script src="https://jsdelivr.net"></script>
+    <script src="https://jsdelivr.net"></script>
+
+    <style>
+        :root { --primary: #10b981; --bg: #05070a; --gold: #fbbf24; }
+        body { font-family: sans-serif; background: var(--bg); color: white; text-align: center; padding: 20px; margin: 0; }
+        .card { background: #111827; max-width: 400px; margin: 20px auto; padding: 30px; border-radius: 30px; border: 1px solid #1f2937; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .counter { font-size: 110px; font-weight: bold; color: var(--primary); margin: 10px 0; line-height: 1; transition: 0.1s; }
+        .btn { width: 100%; padding: 18px; border-radius: 15px; border: none; font-weight: bold; cursor: pointer; margin-bottom: 12px; font-size: 16px; transition: 0.2s; }
+        .btn-train { background: var(--gold); color: #000; }
+        .btn-start { background: var(--primary); color: #fff; }
+        .btn-save { background: #3b82f6; color: white; font-size: 13px; }
+        .status { font-size: 14px; color: #9ca3af; margin-bottom: 20px; min-height: 45px; line-height: 1.4; }
+        .footer { font-size: 10px; color: #4b5563; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2 style="color: var(--gold); margin-bottom: 5px;">TASBIH AI PINTAR</h2>
+        <div class="status" id="statusText">Memuatkan Sistem AI...</div>
+        
+        <div class="counter" id="count">0</div>
+        
+        <button class="btn btn-train" id="trainBtn" onclick="trainModel()" disabled>LATIH SEBUTAN (0/5)</button>
+        <button class="btn btn-start" id="startBtn" onclick="startRecognition()" disabled>MULA ZIKIR</button>
+        
+        <div id="saveSection" style="display:none; margin-top:15px; border-top:1px solid #1f2937; padding-top:15px;">
+            <button class="btn btn-save" onclick="saveModel()">💾 SIMPAN SUARA SAYA</button>
+            <p style="font-size:11px; color:#6b7280;">Klik simpan supaya tak perlu latih lagi esok.</p>
+        </div>
+
+        <button onclick="clearSavedModel()" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:11px; margin-top:25px; opacity: 0.5;">Padam Memori AI</button>
+        <div class="footer">Versi Offline AI - Sifu Edition</div>
+    </div>
+
+<script>
+    let recognizer;
+    let transferRecognizer;
+    let counter = 0;
+    const label = "allahu_akbar";
+    const SAVE_PATH = 'indexeddb://zikir-model-sifu';
+
+    async function init() {
+        const status = document.getElementById('statusText');
+        try {
+            recognizer = speechCommands.create("BROWSER_FFT");
+            await recognizer.ensureModelLoaded();
+            transferRecognizer = recognizer.createTransfer("ZikirSifu");
+
+            // CUBA MUAT MODEL LAMA DARI STORAGE
+            try {
+                await transferRecognizer.load(SAVE_PATH);
+                status.innerHTML = "<span style='color:#10b981'>✅ Memori AI Ditemui!</span><br>Sila klik butang hijau untuk Mula.";
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('trainBtn').style.display = "none";
+            } catch (e) {
+                status.innerText = "AI Sedia. Sila ajar sebutan 'Allahu Akbar' sebanyak 5 kali.";
+                document.getElementById('trainBtn').disabled = false;
+            }
+        } catch (err) {
+            status.innerText = "Ralat: Pastikan guna HTTPS dan benarkan Mic.";
+        }
+    }
+
+    async function trainModel() {
+        document.getElementById('statusText').innerText = "Mendengar... Sebut 'Allahu Akbar' sekarang!";
+        try {
+            await transferRecognizer.collectExample(label);
+            const count = transferRecognizer.countExamples()[label];
+            document.getElementById('trainBtn').innerText = `LATIH SEBUTAN (${count}/5)`;
+            
+            if (count >= 5) {
+                document.getElementById('statusText').innerText = "Sedang melatih AI suara sifu...";
+                await transferRecognizer.train({ epochs: 25 });
+                document.getElementById('statusText').innerHTML = "<span style='color:#fbbf24'>AI Dah Kenal Suara Sifu!</span><br>Sila SIMPAN atau terus MULA.";
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('saveSection').style.display = "block";
+            }
+        } catch(e) { alert("Mic tidak dikesan!"); }
+    }
+
+    async function saveModel() {
+        await transferRecognizer.save(SAVE_PATH);
+        alert("Berjaya! Suara sifu sudah disimpan dalam HP.");
+        document.getElementById('saveSection').style.display = "none";
+    }
+
+    async function clearSavedModel() {
+        if(confirm("Padam memori suara sifu? Anda perlu latih semula nanti.")) {
+            indexedDB.deleteDatabase('tensorflowjs');
+            location.reload();
+        }
+    }
+
+    async function startRecognition() {
+        document.getElementById('statusText').innerText = "Mendengar 'Allahu Akbar' secara offline...";
+        transferRecognizer.listen(result => {
+            const index = transferRecognizer.wordLabels().indexOf(label);
+            if (result.scores[index] > 0.85) {
+                counter++;
+                const countDisp = document.getElementById('count');
+                countDisp.innerText = counter;
+                
+                // Animasi & Bunyi
+                countDisp.style.transform = "scale(1.2)";
+                setTimeout(() => countDisp.style.transform = "scale(1)", 100);
+                playBeep();
+            }
+        }, { probabilityThreshold: 0.85 });
+        
+        document.getElementById('startBtn').innerText = "BERHENTI & RESET";
+        document.getElementById('startBtn').className = "btn btn-start";
+        document.getElementById('startBtn').style.background = "#ef4444";
+        document.getElementById('startBtn').onclick = () => location.reload();
+    }
+
+    function playBeep() {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.05, ctx.currentTime);
+        osc.start(); osc.stop(ctx.currentTime + 0.1);
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
