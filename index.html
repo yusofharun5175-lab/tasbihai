@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tasbih AI Offline (Sifu Version)0405-5</title>
+    <title>Tasbih AI Offline - Versi Stabil 0405-??</title>
     
-    <!-- Library AI Stabil - PAUTAN BETUL -->
-  <!-- Library TensorFlow.js -->
+    <!-- Library TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
     <!-- Library Speech Commands - GUNA VERSI LAMA YANG STABIL -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.4/dist/speech-commands.min.js"></script>
+
     <style>
         :root { --primary: #10b981; --bg: #05070a; --gold: #fbbf24; }
         body { font-family: sans-serif; background: var(--bg); color: white; text-align: center; padding: 20px; margin: 0; }
@@ -22,6 +22,7 @@
         .status { font-size: 14px; color: #9ca3af; margin-bottom: 20px; min-height: 45px; line-height: 1.4; }
         .footer { font-size: 10px; color: #4b5563; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .debug { font-size: 10px; color: #6b7280; margin-top: 10px; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -42,6 +43,7 @@
 
         <button onclick="clearSavedModel()" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:11px; margin-top:25px; opacity: 0.5;">Padam Memori AI</button>
         <div class="footer">Versi Offline AI - Sifu Edition</div>
+        <div class="debug" id="debugInfo"></div>
     </div>
 
 <script>
@@ -52,16 +54,48 @@
     const label = "allahu_akbar";
     const SAVE_PATH = 'indexeddb://zikir-model-sifu';
 
+    // Fungsi untuk debug
+    function logDebug(msg) {
+        const debugEl = document.getElementById('debugInfo');
+        if (debugEl) {
+            debugEl.innerHTML = msg + '<br>' + debugEl.innerHTML;
+            if (debugEl.innerHTML.length > 500) {
+                debugEl.innerHTML = debugEl.innerHTML.substring(0, 500);
+            }
+        }
+        console.log(msg);
+    }
+
     async function init() {
         const status = document.getElementById('statusText');
         try {
-            status.innerText = "Memuatkan model AI...";
+            // SEMAK: Adakah library sudah dimuat?
+            logDebug("Menyemak library TensorFlow.js...");
+            if (typeof tf === 'undefined') {
+                throw new Error("TensorFlow.js tidak dimuatkan. Semak sambungan internet.");
+            }
+            logDebug("✓ TensorFlow.js OK");
             
-            // MUAT MODEL SPEECH COMMANDS
-            recognizer = await speechCommands.create("BROWSER_FFT");
+            logDebug("Menyemak library Speech Commands...");
+            if (typeof speechCommands === 'undefined') {
+                // Cuba semak nama lain
+                if (typeof window.speechCommands !== 'undefined') {
+                    window.speechCommands = window.speechCommands;
+                } else {
+                    throw new Error("SpeechCommands tidak dimuatkan. Cuba muat semula halaman.");
+                }
+            }
+            logDebug("✓ Speech Commands OK");
+            
+            status.innerText = "Memuatkan model AI (20MB)... Sila tunggu...";
+            
+            // MUAT MODEL SPEECH COMMANDS - GUNA CARA YANG LEBIH SELAMAT
+            recognizer = await window.speechCommands.create("BROWSER_FFT");
             await recognizer.ensureModelLoaded();
             
-            status.innerText = "Model AI sedia. Cari memori lama...";
+            logDebug("✓ Model AI berjaya dimuatkan");
+            status.innerText = "Model AI sedia. Menyemak memori lama...";
+            
             transferRecognizer = recognizer.createTransfer("ZikirSifu");
 
             // CUBA MUAT MODEL LAMA DARI STORAGE
@@ -71,20 +105,23 @@
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('trainBtn').style.display = "none";
                 document.getElementById('saveSection').style.display = "none";
+                logDebug("✓ Model lama berjaya dimuatkan dari storage");
             } catch (e) {
+                logDebug("Tiada model lama: " + e.message);
                 status.innerText = "AI Sedia. Sila ajar sebutan 'Allahu Akbar' sebanyak 5 kali.";
                 document.getElementById('trainBtn').disabled = false;
                 document.getElementById('trainBtn').innerText = "LATIH SEBUTAN (0/5)";
             }
         } catch (err) {
             console.error(err);
-            status.innerText = "Ralat: " + err.message;
+            status.innerHTML = "<span style='color:#ef4444'>❌ Ralat: " + err.message + "</span><br>Cuba muat semula halaman (F5)";
+            logDebug("ERROR: " + err.message);
         }
     }
 
     async function trainModel() {
         if (!transferRecognizer) {
-            alert("AI belum siap. Tunggu sebentar.");
+            alert("AI belum siap. Tunggu sebentar dan cuba lagi.");
             return;
         }
         
@@ -93,25 +130,30 @@
         
         try {
             // Minta kebenaran mic dulu
+            logDebug("Meminta kebenaran mikrofon...");
             await navigator.mediaDevices.getUserMedia({ audio: true });
+            logDebug("✓ Kebenaran mikrofon diberikan");
             
             await transferRecognizer.collectExample(label);
             const examples = transferRecognizer.countExamples();
             const count = examples[label] || 0;
             document.getElementById('trainBtn').innerText = `LATIH SEBUTAN (${count}/5)`;
+            logDebug(`Contoh dikumpul: ${count}/5`);
             
             if (count >= 5) {
-                status.innerText = "🧠 Melatih AI dengan suara anda...";
+                status.innerText = "🧠 Melatih AI dengan suara anda (30 saat)...";
                 await transferRecognizer.train({ epochs: 25 });
                 status.innerHTML = "<span style='color:#fbbf24'>✅ AI Dah Kenal Suara Sifu!</span><br>Sila SIMPAN atau terus MULA.";
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('saveSection').style.display = "block";
                 document.getElementById('trainBtn').disabled = true;
+                logDebug("✓ Latihan selesai");
             }
         } catch(e) {
             console.error(e);
             status.innerText = "Ralat: Pastikan anda benarkan akses mikrofon.";
-            alert("Sila benarkan akses mikrofon untuk latih AI.");
+            logDebug("ERROR training: " + e.message);
+            alert("Sila benarkan akses mikrofon untuk latih AI.\n\nError: " + e.message);
         }
     }
 
@@ -120,11 +162,20 @@
         await transferRecognizer.save(SAVE_PATH);
         alert("✅ Berjaya! Suara sifu sudah disimpan.");
         document.getElementById('saveSection').style.display = "none";
+        logDebug("✓ Model disimpan ke IndexedDB");
     }
 
     async function clearSavedModel() {
         if(confirm("Padam memori suara sifu? Anda perlu latih semula nanti.")) {
+            // Padam IndexedDB
+            const databases = await indexedDB.databases();
+            databases.forEach(db => {
+                if (db.name && db.name.includes('tensorflow')) {
+                    indexedDB.deleteDatabase(db.name);
+                }
+            });
             indexedDB.deleteDatabase('tensorflowjs');
+            alert("Memori dipadam. Halaman akan dimuat semula.");
             location.reload();
         }
     }
@@ -135,7 +186,7 @@
         const status = document.getElementById('statusText');
         const startBtn = document.getElementById('startBtn');
         
-        status.innerText = "🎙️ Mendengar 'Allahu Akbar'...";
+        status.innerText = "🎙️ Mendengar 'Allahu Akbar'... Sebut sekarang!";
         
         try {
             // Minta kebenaran mic
@@ -143,7 +194,6 @@
             
             transferRecognizer.listen(result => {
                 const scores = result.scores;
-                // Dapatkan indeks untuk label kita
                 const labels = transferRecognizer.wordLabels();
                 const labelIndex = labels.indexOf(label);
                 
@@ -155,6 +205,7 @@
                     // Animasi
                     countDisp.style.transform = "scale(1.2)";
                     setTimeout(() => countDisp.style.transform = "scale(1)", 100);
+                    logDebug(`✓ Dikesan! Kiraan: ${counter}`);
                     
                     // Bunyi beep ringkas
                     try {
@@ -179,11 +230,13 @@
             startBtn.innerText = "⏹️ BERHENTI & RESET";
             startBtn.style.background = "#ef4444";
             startBtn.onclick = () => location.reload();
+            logDebug("✓ Pendengaran AI diaktifkan");
             
         } catch(e) {
             console.error(e);
             status.innerText = "Ralat: Sila benarkan akses mikrofon.";
-            alert("Sila benarkan akses mikrofon untuk mula zikir.");
+            logDebug("ERROR start: " + e.message);
+            alert("Sila benarkan akses mikrofon untuk mula zikir.\n\nError: " + e.message);
         }
     }
 
@@ -192,3 +245,5 @@
 </script>
 </body>
 </html>
+
+
